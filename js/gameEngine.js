@@ -76,19 +76,28 @@ class GameEngine {
     console.log("Game Started! Lane centers:", this.LANE_CENTERS);
 
     // Add Keyboard Listener
+    // Add Keyboard Listener
     this.handleKeydown = (e) => {
       // Debugging log
-      console.log("Key pressed:", e.key, "| Active:", this.isGameActive, "| GameOver:", this.gameOver);
+      const debugDiv = document.getElementById("debug-log");
+      if (debugDiv) debugDiv.innerText = `Key: ${e.key} | Active: ${this.isGameActive}`;
 
       if (!this.isGameActive || this.gameOver) return;
 
+      // Activate Keyboard Override (3 seconds = 180 frames)
+      this.keyboardOverrideTimer = 180;
+
       if (e.key === "ArrowLeft") {
-        this.playerLane = 0;
+        // Move Left (Relative)
+        this.playerLane = Math.max(0, this.playerLane - 1);
         e.preventDefault();
       } else if (e.key === "ArrowRight") {
-        this.playerLane = 2;
+        // Move Right (Relative)
+        this.playerLane = Math.min(2, this.playerLane + 1);
         e.preventDefault();
       } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        // Optional: Center? Or just ignore? 
+        // Let's keep it as "Center" shortcut for convenience
         this.playerLane = 1;
         e.preventDefault();
       }
