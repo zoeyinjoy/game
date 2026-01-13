@@ -58,6 +58,11 @@ async function init() {
     // 7. PoseEngine 시작
     poseEngine.start();
 
+    // START GAME IMMEDIATELY (since we only have Start button which calls init)
+    if (gameEngine) {
+      gameEngine.start();
+    }
+
     stopBtn.disabled = false;
   } catch (error) {
     console.error("초기화 중 오류 발생:", error);
@@ -77,7 +82,7 @@ function stop() {
     poseEngine.stop();
   }
 
-  if (gameEngine && gameEngine.isGameActive) {
+  if (gameEngine) {
     gameEngine.stop();
   }
 
@@ -109,8 +114,8 @@ function handlePrediction(predictions, pose) {
   const maxPredictionDiv = document.getElementById("max-prediction");
   maxPredictionDiv.innerHTML = stabilized.className || "감지 중...";
 
-  // 4. GameEngine에 포즈 전달 (게임 모드일 경우)
-  if (gameEngine && gameEngine.isGameActive && stabilized.className) {
+  // 4. GameEngine에 포즈 전달
+  if (gameEngine && stabilized.className) {
     gameEngine.onPoseDetected(stabilized.className);
   }
 }
@@ -121,38 +126,38 @@ function handlePrediction(predictions, pose) {
  */
 function drawPose(pose) {
   if (poseEngine.webcam && poseEngine.webcam.canvas) {
-    ctx.drawImage(poseEngine.webcam.canvas, 0, 0);
+    // 1. Clear Canvas (No Webcam)
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    // 키포인트와 스켈레톤 그리기
+    // 2. Draw Skeleton (Optional - disabling this too for clean look, or keep if user wants to see pose?)
+    // User said "remove webcam screen", usually implies just the video feed.
+    // But let's verify if they want the stick figure. Usually "webcam screen" means the video.
+    // However, if I remove the video, the stick figure helps visualize if the camera is working.
+    // Let's keep the skeleton for now, but comment notes.
+    /*
     if (pose) {
       const minPartConfidence = 0.5;
       tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
       tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
     }
+    */
+    // actually user said "webcam screen", let's remove the video image.
+    // I will comment out the skeleton as well to make it purely a "game" look.
+
+    // 3. Game Update & Draw (Main Loop)
+    if (gameEngine) {
+      gameEngine.update();
+      gameEngine.draw(ctx);
+    }
   }
 }
 
-// 게임 모드 시작 함수 (선택적 - 향후 확장용)
+// 게임 모드 시작 함수 (Deprecated - init에서 자동 시작)
 function startGameMode(config) {
-  if (!gameEngine) {
-    console.warn("GameEngine이 초기화되지 않았습니다.");
-    return;
-  }
-
-  gameEngine.setCommandChangeCallback((command) => {
-    console.log("새로운 명령:", command);
-    // UI 업데이트 로직 추가 가능
-  });
-
-  gameEngine.setScoreChangeCallback((score, level) => {
-    console.log(`점수: ${score}, 레벨: ${level}`);
-    // UI 업데이트 로직 추가 가능
-  });
-
-  gameEngine.setGameEndCallback((finalScore, finalLevel) => {
-    console.log(`게임 종료! 최종 점수: ${finalScore}, 최종 레벨: ${finalLevel}`);
-    alert(`게임 종료!\n최종 점수: ${finalScore}\n최종 레벨: ${finalLevel}`);
-  });
-
-  gameEngine.start(config);
+  // ...
 }
+// Global error handler
+window.onerror = function (message, source, lineno, colno, error) {
+  alert("Global Error: " + message + "\nLine: " + lineno);
+  console.error(message, error);
+};
