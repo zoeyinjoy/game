@@ -40,8 +40,8 @@ async function init() {
 
     // 4. 캔버스 설정
     const canvas = document.getElementById("canvas");
-    canvas.width = 200;
-    canvas.height = 200;
+    canvas.width = 600;
+    canvas.height = 600;
     ctx = canvas.getContext("2d");
 
     // 5. Label Container 설정

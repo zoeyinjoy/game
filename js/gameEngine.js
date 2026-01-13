@@ -9,33 +9,47 @@
  * - Game Over: Time 0 or Life 0
  */
 
+/**
+ * gameEngine.js
+ * Fruit Catcher Logic - Strictly following GAME_RULE.md
+ * 
+ * Rules:
+ * - 3 Lanes: Left, Center, Right
+ * - Player moves Basket 🧺 based on Pose
+ * - Items fall: Apple 🍎 (+100), Grape 🍇 (+300), Golden Apple 🍏 (+1000, SpeedUp, CoinFX), Bomb 💣 (Game Over)
+ * - Game Over: Time 0 or Bomb Hit
+ */
+
 class GameEngine {
   constructor() {
     this.ctx = null;
     this.score = 0;
     this.level = 1;
     this.timeLimit = 60;
-    this.life = 3;
+    this.life = 1; // 1 Life because bomb is instant kill
     this.isGameActive = false;
     this.gameOver = false;
 
     // Game State
     this.items = []; // {x, y, type, speed, lane}
+    this.particles = []; // {x, y, vx, vy, life, color, label}
     this.playerLane = 1; // 0:Left, 1:Center, 2:Right
     this.spawnTimer = 0;
     this.spawnInterval = 60;
+    this.speedMultiplier = 1.0; // Increases on Golden Apple
 
-    // Constants
-    this.CANVAS_WIDTH = 200;
-    this.CANVAS_HEIGHT = 200;
-    this.LANE_WIDTH = 200 / 3;
-    // Centers: approx 33, 100, 166
-    this.LANE_CENTERS = [33, 100, 166];
+    // Constants - Canvas Size Increased to 600x600
+    this.CANVAS_WIDTH = 600;
+    this.CANVAS_HEIGHT = 600;
+    this.LANE_WIDTH = 600 / 3; // 200
+    // Centers: 100, 300, 500
+    this.LANE_CENTERS = [100, 300, 500];
 
     this.ITEM_TYPES = [
-      { id: 'apple', label: '🍎', score: 100, speed: 2, isBomb: false },
-      { id: 'grape', label: '🍇', score: 300, speed: 4, isBomb: false },
-      { id: 'bomb', label: '💣', score: 0, speed: 3, isBomb: true }
+      { id: 'apple', label: '🍎', score: 100, baseSpeed: 3, isBomb: false },
+      { id: 'grape', label: '🍇', score: 300, baseSpeed: 5, isBomb: false },
+      { id: 'golden', label: '🍏', score: 1000, baseSpeed: 7, isBomb: false, isSpecial: true },
+      { id: 'bomb', label: '💣', score: 0, baseSpeed: 4, isBomb: true }
     ];
 
     // Callbacks
@@ -53,12 +67,14 @@ class GameEngine {
     this.isGameActive = true;
     this.gameOver = false;
     this.score = 0;
-    this.life = 3;
+    this.life = 1;
     this.timeLimit = 60;
     this.items = [];
+    this.particles = [];
     this.playerLane = 1;
     this.spawnInterval = 60;
     this.spawnTimer = 0;
+    this.speedMultiplier = 1.0;
 
     // Clear previous timer if any
     if (this.timerInterval) clearInterval(this.timerInterval);
@@ -134,22 +150,24 @@ class GameEngine {
 
     // 1. Spawning
     this.spawnTimer++;
-    if (this.spawnTimer > this.spawnInterval) {
+    // Spawn faster as multiplier increases
+    if (this.spawnTimer > (this.spawnInterval / Math.max(1, this.speedMultiplier * 0.5))) {
       this.spawnItem();
       this.spawnTimer = 0;
-      // Increase difficulty
-      if (this.spawnInterval > 20) this.spawnInterval -= 0.5;
+      // Increase difficulty cap
+      if (this.spawnInterval > 20) this.spawnInterval -= 0.1;
     }
 
     // 2. Move Items
+    const basketYTop = 500; // Basket Capture Area Top
+    const basketYBottom = 580; // Basket Capture Area Bottom (Canvas 600)
+
     for (let i = this.items.length - 1; i >= 0; i--) {
       let item = this.items[i];
-      item.y += item.speed;
+      item.y += item.speed * this.speedMultiplier;
 
       // 3. Collision Detection
-      // Basket Y is around 170-190. Item center is item.y.
-      // Check if item is within vertical range of basket
-      if (item.y > 170 && item.y < 200) {
+      if (item.y > basketYTop && item.y < basketYBottom) {
         // Check horizontal lane
         if (item.lane === this.playerLane) {
           this.handleCollision(item);
@@ -159,41 +177,101 @@ class GameEngine {
       }
 
       // 4. Remove if out of screen
-      if (item.y > 210) {
+      if (item.y > this.CANVAS_HEIGHT + 50) {
         this.items.splice(i, 1);
       }
     }
+
+    // 5. Update Particles
+    this.updateParticles();
   }
 
   spawnItem() {
     const lane = Math.floor(Math.random() * 3); // 0, 1, 2
 
-    // Logic: 50% Apple, 30% Bomb, 20% Grape
+    // Logic: 
+    // 45% Apple
+    // 25% Grape
+    // 20% Bomb
+    // 10% Golden Apple
     const r = Math.random();
     let type = this.ITEM_TYPES[0]; // Apple
-    if (r > 0.8) type = this.ITEM_TYPES[1]; // Grape
-    else if (r > 0.5) type = this.ITEM_TYPES[2]; // Bomb
+
+    if (r > 0.9) type = this.ITEM_TYPES[2]; // Golden Apple
+    else if (r > 0.7) type = this.ITEM_TYPES[3]; // Bomb
+    else if (r > 0.45) type = this.ITEM_TYPES[1]; // Grape
 
     this.items.push({
       x: this.LANE_CENTERS[lane],
-      y: -20,
+      y: -50,
       lane: lane,
-      ...type
+      speed: type.baseSpeed, // Assign base speed
+      ...type // Copy props
     });
   }
 
   handleCollision(item) {
     if (item.isBomb) {
-      this.life--;
-      console.log("Bomb hit! Life:", this.life);
-      if (this.life <= 0) {
-        this.triggerGameOver();
-      }
+      console.log("Bomb hit! Game Over.");
+      this.triggerGameOver();
     } else {
       this.score += item.score;
-      // console.log("Fruit collected! Score:", this.score);
+
+      if (item.isSpecial) { // Golden Apple
+        // 1. Speed Up
+        this.speedMultiplier *= 1.2; // 20% faster
+        console.log("Golden Apple! Speed Up:", this.speedMultiplier);
+
+        // 2. Bonus Time (Optional, rule didn't say, but nice to have? maybe not according to strict rule)
+        // Rule said: "score 1000, speed up, coin explosion"
+
+        // 3. Coin Explosion
+        this.createCoinExplosion(item.x, item.y);
+      }
     }
   }
+
+  // --- Particle/Visual Effects ---
+
+  createCoinExplosion(x, y) {
+    // Create 10-15 coins
+    const count = 15;
+    for (let i = 0; i < count; i++) {
+      this.particles.push({
+        x: x,
+        y: y,
+        vx: (Math.random() - 0.5) * 10,
+        vy: (Math.random() - 1) * 10 - 5, // Upward burst
+        gravity: 0.5,
+        life: 60, // frames
+        label: '🪙'
+      });
+    }
+  }
+
+  updateParticles() {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      let p = this.particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += p.gravity;
+      p.life--;
+
+      if (p.life <= 0) {
+        this.particles.splice(i, 1);
+      }
+    }
+  }
+
+  drawParticles(ctx) {
+    ctx.font = "20px Arial";
+    for (let p of this.particles) {
+      ctx.globalAlpha = p.life / 60;
+      ctx.fillText(p.label, p.x, p.y);
+    }
+    ctx.globalAlpha = 1.0;
+  }
+
 
   /**
    * Draw Rendering (Called every frame from main.js)
@@ -204,55 +282,69 @@ class GameEngine {
 
     ctx.save();
 
+    // Resize Note: Main.js creates a 600x600 canvas now.
+
     // Draw Lane dividers
     ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4; // Thicker lines for bigger screen
     ctx.beginPath();
-    ctx.moveTo(this.LANE_WIDTH, 0); ctx.lineTo(this.LANE_WIDTH, 200);
-    ctx.moveTo(this.LANE_WIDTH * 2, 0); ctx.lineTo(this.LANE_WIDTH * 2, 200);
+    ctx.moveTo(this.LANE_WIDTH, 0); ctx.lineTo(this.LANE_WIDTH, 600);
+    ctx.moveTo(this.LANE_WIDTH * 2, 0); ctx.lineTo(this.LANE_WIDTH * 2, 600);
     ctx.stroke();
 
     // Draw Player Basket
     const basketX = this.LANE_CENTERS[this.playerLane];
-    ctx.font = "30px Arial";
+    ctx.font = "80px Arial"; // Bigger basket
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("🧺", basketX, 185);
+    // Place near bottom. Canvas H=600.
+    ctx.fillText("🧺", basketX, 550);
 
     // Draw Items
-    ctx.font = "24px Arial";
+    ctx.font = "60px Arial"; // Bigger fruits
     for (let item of this.items) {
       ctx.fillText(item.label, item.x, item.y);
     }
 
+    // Draw Particles
+    this.drawParticles(ctx);
+
     // Draw HUD
     // Background bar
     ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(0, 0, 200, 30);
+    ctx.fillRect(0, 0, 600, 60); // Taller HUD
 
     // Text
     ctx.fillStyle = "white";
-    ctx.font = "12px sans-serif";
+    ctx.font = "30px sans-serif";
+    ctx.textBaseline = "middle";
+
     ctx.textAlign = "left";
-    ctx.fillText(`Sc: ${this.score}`, 5, 20);
+    ctx.fillText(`Score: ${this.score}`, 20, 30);
 
     ctx.textAlign = "center";
-    ctx.fillText(`Time: ${this.timeLimit}`, 100, 20);
+    ctx.fillText(`Time: ${this.timeLimit}`, 300, 30);
 
+    // Actually, Life is irrelevant now since bomb is instant death, but let's keep it just in case
+    // Or maybe just show "Speed"
     ctx.textAlign = "right";
-    ctx.fillText(`Life: ${this.life}`, 195, 20);
+    ctx.fillText(`Spd: x${this.speedMultiplier.toFixed(1)}`, 580, 30);
 
     // Draw Game Over Overlay
     if (this.gameOver) {
       ctx.fillStyle = "rgba(0,0,0,0.8)";
-      ctx.fillRect(0, 0, 200, 200);
+      ctx.fillRect(0, 0, 600, 600);
+
       ctx.fillStyle = "red";
-      ctx.font = "bold 24px Arial";
+      ctx.shadowColor = "black";
+      ctx.shadowBlur = 10;
+      ctx.font = "bold 60px Arial";
       ctx.textAlign = "center";
-      ctx.fillText("GAME OVER", 100, 80);
+      ctx.fillText("GAME OVER", 300, 250);
+
       ctx.fillStyle = "white";
-      ctx.font = "16px Arial";
-      ctx.fillText(`Score: ${this.score}`, 100, 110);
+      ctx.font = "40px Arial";
+      ctx.fillText(`Final Score: ${this.score}`, 300, 330);
     }
 
     ctx.restore();
